@@ -9,9 +9,10 @@ This repository provides a ready-to-use inference pipeline as well as a fully cu
 
 ## Key Features
 
-- **Ensemble Power**: Leverages a meta-learning approach by combining base predictions from multiple models.
+- **RNA-Foundation-model**: Default integration with our RNA large language model RNA-FM to provide rich representations and accurate predictions.
+- **Ensemble Power**: Leverages a meta-learning approach by combining RNA-FM with base predictions from multiple models.
 - **Energy-Aware**: Flexibly incorporates energy parameters as a feature, grounding predictions in biophysical principles.
-- **Highly Modular**: Easily integrate or replace base prediction models (e.g. RNAformer, MXfold2) without changing the core architecture (Our RNA large language model RNA-FM is default).
+- **Highly Modular**: Easily integrate or replace base prediction models (e.g. RNAformer, MXfold2) without changing the core architecture.
 - **Ready for Inference**: Comes with pre-trained weights for both the base models and the final RFMfold meta-model.
 - **Trainable**: Provides a complete training pipeline using PyTorch Lightning for users who wish to train RFMfold on their own data or with a custom set of base predictors.
 
