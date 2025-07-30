@@ -1,4 +1,4 @@
-# RFMfold: 
+# RFMfold: Accurate RNA secondary structure prediction with large RNA language models and ensemble learning
 
 RFMfold is an advanced ensemble learning framework for RNA secondary structure prediction. It uniquely integrates pre-trained RNA foundation models (like RNA-FM), energy parameters, and outputs from other state-of-the-art predictors to achieve enhanced accuracy and flexibility.
 
