@@ -112,7 +112,9 @@ To train RFMfold, you need to provide it with pre-computed secondary structure p
     ```
     python run_fm_ss.py --input_dir ./my_fasta_files/
     ```
-results will be save in ss_fea/rnafm, change the fm weights if needed.
+    results will be save in ss_fea/rnafm, change the fm weights if needed.
+
+    
 4.  **Configure the Training Script**
 
     Open the `pl_train.py` script and locate the `DATA_CONFIG` dictionary. Update the directory paths to point to your datasets and feature locations.
