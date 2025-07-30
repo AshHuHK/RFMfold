@@ -68,6 +68,8 @@ The inference pipeline consists of two stages that run automatically:
     -   It produces a final, high-accuracy probability matrix, which is saved in the `final_prediction/` directory.
 
 > **Model Weights**: The default weights for the base models (RNA-FM, RNAformer, MXfold2) are located in the `ss_models/ss_models_pth` directory. If you wish to use different pre-trained models for your specific task, simply replace the corresponding files in this directory.
+> 
+> **Energy params**: The default energy params for RFMfold are located in the `bp_fea` directory, named as 'avg_energy_stacking_k2.pkl', 'avg_energy_dist_k2.pkl'. If you wish to use different energy params for your specific task, simply replace the corresponding files in this directory.
 
 ## Training Your Own Ensemble Model
 
