@@ -105,32 +105,32 @@ To train RFMfold, you need to provide it with pre-computed secondary structure p
         │   └── ...
         └── ...
     ```
-    
+         For the training labels and data, RFMfold by default use bpseq format and fasta to train, by default the dataset should look like this:
     
      ```
     xx_dataset/
-├── train/
-│   ├── bpseq/
-│   │   ├── sequence1.bpseq
-│   │   ├── sequence2.bpseq
-│   │   └── ... 
-│   │
-│   └── fasta/
-│       ├── sequence1.fasta
-│       ├── sequence2.fasta
-│       └── ...
-│
-└── val/
-    ├── bpseq/
-    │   ├── val_sequence1.bpseq
-    │   ├── val_sequence2.bpseq
-    │   └── ...
+    ├── train/
+    │   ├── bpseq/
+    │   │   ├── sequence1.bpseq
+    │   │   ├── sequence2.bpseq
+    │   │   └── ... 
+    │   │
+    │   └── fasta/
+    │       ├── sequence1.fasta
+    │       ├── sequence2.fasta
+    │       └── ...
     │
-    └── fasta/
-        ├── val_sequence1.fasta
-        ├── val_sequence2.fasta
-        └── ...
- ```
+    └── val/
+        ├── bpseq/
+        │   ├── val_sequence1.bpseq
+        │   ├── val_sequence2.bpseq
+        │   └── ...
+        │
+        └── fasta/
+            ├── val_sequence1.fasta
+            ├── val_sequence2.fasta
+            └── ...
+     ```
 3.  **Generate Probability Matrices**
 
     For each base model (`method1`, `method2`, etc.), run its prediction on your entire training and validation datasets. Save each output as a 2D probability matrix in `.npy` format. The filename of the `.npy` file must match the name of the corresponding sequence file. For rnafm predictions, run
