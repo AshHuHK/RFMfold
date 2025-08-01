@@ -4,7 +4,7 @@ RFMfold is an advanced ensemble learning framework for RNA secondary structure p
 
 This repository provides a ready-to-use inference pipeline as well as a fully customizable training pipeline, allowing users to either get predictions out-of-the-box or build their own specialized ensemble models.
 
-![Model Architecture Diagram](https://raw.githubusercontent.com/Ash-Hu-123/RFMfold/main/pics/overview.png)
+![Model Architecture Diagram](https://github.com/AshHuHK/RFMfold/blob/main/fig.png)
 
 
 ## Key Features
