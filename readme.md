@@ -132,9 +132,7 @@ To train RFMfold, you need to provide it with pre-computed secondary structure p
             ├── val_sequence1.fasta
             ├── val_sequence2.fasta
             └── ...
-          ```
-     
-    
+          
 4.  **Generate Probability Matrices**
 
     For each base model (`method1`, `method2`, etc.), run its prediction on your entire training and validation datasets. Save each output as a 2D probability matrix in `.npy` format. The filename of the `.npy` file must match the name of the corresponding sequence file. For rnafm predictions, run
