@@ -106,6 +106,7 @@ To train RFMfold, you need to provide it with pre-computed secondary structure p
         └── ...
     ```
 2.  **Create the Training Data**
+   
    For the training labels and data, RFMfold by default use bpseq format and fasta to train, by default the data should organized to look like below,
      ```
     xx_dataset/
