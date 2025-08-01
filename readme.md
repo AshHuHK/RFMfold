@@ -105,7 +105,7 @@ To train RFMfold, you need to provide it with pre-computed secondary structure p
         │   └── ...
         └── ...
     ```
-    
+2.  **Create the Training Data**
      ```
     xx_dataset/
     ├── train/
