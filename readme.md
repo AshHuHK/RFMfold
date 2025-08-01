@@ -85,7 +85,7 @@ To train RFMfold, you need to provide it with pre-computed secondary structure p
     Inside the `ss_fea/` directory, create `train` and `val` subdirectories. Then, for each base prediction method you want to include in your ensemble, create a corresponding subdirectory within both `train` and `val`.
 
     The final structure should look like this:
-
+    ```
     ss_fea/
     ├── train/
     │   ├── method1/
@@ -104,12 +104,12 @@ To train RFMfold, you need to provide it with pre-computed secondary structure p
         │   ├── sequence_val_1.npy
         │   └── ...
         └── ...
- 
+     ```
 2.  **Create the Training Data**
    
    For the training labels and data, RFMfold by default use bpseq format and fasta to train, by default the data should organized to look like below,
    
-     ```
+    
     xx_dataset/
     ├── train/
     │   ├── bpseq/
@@ -132,7 +132,7 @@ To train RFMfold, you need to provide it with pre-computed secondary structure p
             ├── val_sequence1.fasta
             ├── val_sequence2.fasta
             └── ...
-     ```
+     
      
     
 4.  **Generate Probability Matrices**
