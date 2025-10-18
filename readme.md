@@ -41,22 +41,13 @@ Minimal, logical steps to reproduce validation F1 on your dataset.
 
 ## 1) Steps
 
-Prepare your validation data, the final architecture should be as follows, make sure **basenames match** across FASTA / BPSEQ / SS features (e.g., `foo.fasta` ↔ `foo.bpseq` ↔ `foo.npy`).
+Prepare your validation data, the final architecture should be as follows, make sure **basenames match** across FASTA / BPSEQ (e.g., `foo.fasta` ↔ `foo.bpseq`).
 
 ```text
 project/
 ├─ data/ts0/
 │  ├─ fasta/        # input .fasta
 │  └─ bpseq/        # reference .bpseq
-├─ ss_fea/          # Stage 1 outputs (created in step 3)
-│  ├─ rnafm/        # <name>.npy
-│  ├─ rnaformer/    # <name>.npy
-│  └─ mxfold2/      # <name>.npy
-├─ bp_fea/          # energy params
-├─ ss_models/ss_models_pth/   # base-model weights
-├─ infer_ss_batch.py          # Stage 1 generator
-└─ run_val.py                 # Stage 2 validator
-```
 
 ```bash
 # Step A — Prepare data
@@ -70,7 +61,7 @@ python3 infer_ss_batch.py \
   --ss_feature_dir ./ss_fea
 
 # Step C — Run RFMfold validation (Stage 2)
-# Ensure run_val.py sets: val_root = ./data/ts0/
+#sets: val_root = ./data/ts0/
 python3 run_val.py
 ```
 
@@ -96,15 +87,17 @@ ss_fea/
 
 * Loads the RFMfold model (optionally from a checkpoint).
 * Inputs: sequence features, **energy params**, and **Stage-1 SS features**.
-* Outputs: final probability matrices and **validation F1** (printed/logged).
+* Outputs: **validation F1** (printed/logged).
 
 ---
 
 Beyond direct inference, RFMfold offers exceptional flexibility for creating custom ensembles. You can decide which base prediction methods to integrate and retrain the RFMfold meta-model to specialize in your dataset.
 
+# RFMfold — Training Pipeline
+
 ### Preparing Data for Training
 
-To train RFMfold, you need to provide it with pre-computed secondary structure predictions from your chosen base models. Here is a step-by-step guide using the bpRNA dataset as an example.
+To train RFMfold, you need to provide it with pre-computed secondary structure predictions from your chosen base models for example running `infer_ss_batch.py`. Here is a step-by-step guide using the bpRNA dataset as an example.
 
 1.  **Create the Directory Structure**
 
@@ -161,11 +154,11 @@ To train RFMfold, you need to provide it with pre-computed secondary structure p
           
 4.  **Generate Probability Matrices**
 
-    For each base model (`method1`, `method2`, etc.), run its prediction on your entire training and validation datasets. Save each output as a 2D probability matrix in `.npy` format. The filename of the `.npy` file must match the name of the corresponding sequence file. For rnafm predictions, run
+    For each base model (`method1`, `method2`, etc.), run its prediction on your entire training and validation datasets. Save each output as a 2D probability matrix in `.npy` format. The filename of the `.npy` file must match the name of the corresponding sequence file. For example run
     ```
-    python run_fm_ss.py --input_dir ./my_fasta_files/
+    python3 infer_ss_batch.py --input_dir ./data/val/fasta --ss_feature_dir ./ss_fea/val
     ```
-    results will be save in ss_fea/rnafm, change the fm weights if needed.
+    results will be save in ss_fea/val.
 
     
 5.  **Configure the Training Script**
