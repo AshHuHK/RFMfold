@@ -43,25 +43,29 @@ Minimal, logical steps to reproduce validation F1 on your dataset.
 
 Prepare your validation data, the final architecture should be as follows, make sure **basenames match** across FASTA / BPSEQ (e.g., `foo.fasta` ↔ `foo.bpseq`).
 
+### Step A — Prepare data  
+Place your files as:  
+```
+./data/ts0/fasta/*.fasta  
+./data/ts0/bpseq/*.bpseq
+```
+as follows,
 ```text
 project/
 ├─ data/ts0/
 │  ├─ fasta/        # input .fasta
 │  └─ bpseq/        # reference .bpseq
-
-```bash
-# Step A — Prepare data
-# Place your files as:
-# ./data/ts0/fasta/*.fasta
-# ./data/ts0/bpseq/*.bpseq
-
-# Step B — Generate SS features (Stage 1)
+```
+### Step B — Generate SS features (Stage 1)
+```bash 
 python3 infer_ss_batch.py \
   --input_dir ./data/ts0/fasta \
   --ss_feature_dir ./ss_fea
+```
 
-# Step C — Run RFMfold validation (Stage 2)
-#sets: val_root = ./data/ts0/
+### Step C — Run RFMfold validation (Stage 2)
+```
+#sets: val_root = ./data/ts0/ in run_val.py
 python3 run_val.py
 ```
 
@@ -152,7 +156,7 @@ To train RFMfold, you need to provide it with pre-computed secondary structure p
             ├── val_sequence2.fasta
             └── ...
           
-4.  **Generate Probability Matrices**
+4.  **Generate Ensembling Probability Matrices**
 
     For each base model (`method1`, `method2`, etc.), run its prediction on your entire training and validation datasets. Save each output as a 2D probability matrix in `.npy` format. The filename of the `.npy` file must match the name of the corresponding sequence file. For example run
     ```
@@ -184,9 +188,6 @@ To train RFMfold, you need to provide it with pre-computed secondary structure p
 Once your data is prepared and the configuration is set, start the training process:
 
 ```bash
-# Ensure you are in the correct conda environment
-conda activate RFMfold
-
 # Run the PyTorch Lightning training script
 python pl_train.py
 ```
