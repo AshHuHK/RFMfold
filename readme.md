@@ -35,44 +35,70 @@ Getting RFMfold set up is straightforward. The following steps will create a ded
     bash install_env.sh
     ```    > **Note**: During the installation process, you may be prompted to confirm installations. Please answer `yes` to all prompts to ensure a complete setup.
 
-## Inference Pipeline
+# RFMfold — Validation Pipeline
 
-The inference process is fully automated. Given a single FASTA file, the pipeline first generates secondary structure (SS) probability matrices from several base models and then uses them as features for the final RFMfold prediction.
+Minimal, logical steps to reproduce validation F1 on your dataset.
 
-### Quick Start
+## 1) Steps
 
-After installation, you can run inference on a sample FASTA file (`test.fasta`) with a single command.
+Prepare your validation data, the final architecture should be as follows, make sure **basenames match** across FASTA / BPSEQ / SS features (e.g., `foo.fasta` ↔ `foo.bpseq` ↔ `foo.npy`).
 
-```bash
-# First, activate the conda environment
-conda activate RFMfold
-
-# Run the main inference pipeline
-python infer_main.py --fasta_file ./test.fasta --device gpu
+```text
+project/
+├─ data/ts0/
+│  ├─ fasta/        # input .fasta
+│  └─ bpseq/        # reference .bpseq
+├─ ss_fea/          # Stage 1 outputs (created in step 3)
+│  ├─ rnafm/        # <name>.npy
+│  ├─ rnaformer/    # <name>.npy
+│  └─ mxfold2/      # <name>.npy
+├─ bp_fea/          # energy params
+├─ ss_models/ss_models_pth/   # base-model weights
+├─ infer_ss_batch.py          # Stage 1 generator
+└─ run_val.py                 # Stage 2 validator
 ```
 
--   `--fasta_file`: Path to your input FASTA file.
--   `--device`: Specify the device to use. Can be `gpu` or `cpu`.
+```bash
+# Step A — Prepare data
+# Place your files as:
+# ./data/ts0/fasta/*.fasta
+# ./data/ts0/bpseq/*.bpseq
 
-### How It Works
+# Step B — Generate SS features (Stage 1)
+python3 infer_ss_batch.py \
+  --input_dir ./data/ts0/fasta \
+  --ss_feature_dir ./ss_fea
 
-The inference pipeline consists of two stages that run automatically:
+# Step C — Run RFMfold validation (Stage 2)
+# Ensure run_val.py sets: val_root = ./data/ts0/
+python3 run_val.py
+```
 
-1.  **Stage 1: Base Feature Generation**
-    -   The script calls our pre-trained base models: **RNA-FM**, **RNAformer**, and **MXfold2**.
-    -   Each model predicts a secondary structure probability matrix for the input sequence.
-    -   These predictions are saved as `.npy` files inside the `ss_fea/` directory, organized by model name.
+On completion, the script prints **macro/micro F1** to the console.
 
-2.  **Stage 2: Final RFMfold Prediction**
-    -   The main RFMfold model is loaded.
-    -   It takes the sequence information, energy parameters, and the **SS features generated in Stage 1** as input.
-    -   It produces a final, high-accuracy probability matrix, which is saved in the `final_prediction/` directory.
+---
 
-> **Model Weights**: The default weights for the base models (RNA-FM, RNAformer, MXfold2) are located in the `ss_models/ss_models_pth` directory. If you wish to use different pre-trained models for your specific task, simply replace the corresponding files in this directory.
-> 
-> **Energy params**: The default energy params for RFMfold are located in the `bp_fea` directory, named as 'avg_energy_stacking_k2.pkl', 'avg_energy_dist_k2.pkl'. If you wish to use different energy params for your specific task, simply replace the corresponding files in this directory.
+## 2) How It Works
 
-## Training Your Own Ensemble Model
+### Stage 1 — SS Feature Generation
+
+* Loads pretrained **RNA-FM**, **RNAformer**, **MXfold2**.
+* Predicts per-sequence **SS probability matrices** and saves to:
+
+```text
+ss_fea/
+  rnafm/<name>.npy
+  rnaformer/<name>.npy
+  mxfold2/<name>.npy
+```
+
+### Stage 2 — RFMfold Validation
+
+* Loads the RFMfold model (optionally from a checkpoint).
+* Inputs: sequence features, **energy params**, and **Stage-1 SS features**.
+* Outputs: final probability matrices and **validation F1** (printed/logged).
+
+---
 
 Beyond direct inference, RFMfold offers exceptional flexibility for creating custom ensembles. You can decide which base prediction methods to integrate and retrain the RFMfold meta-model to specialize in your dataset.
 
