@@ -49,7 +49,7 @@ Place your files as:
 ./data/ts0/fasta/*.fasta  
 ./data/ts0/bpseq/*.bpseq
 ```
-as follows,
+the file architecture should be as follows,
 ```text
 project/
 ├─ data/ts0/
