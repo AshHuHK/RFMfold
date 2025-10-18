@@ -10,7 +10,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, TQDMProg
 import pickle
 
 # --- Import user-defined modules ---
-from rfmfold_old import RFMfold
+from rfmfold import RFMfold
 from data import RNADataset, pad_collate
 
 # --- Utility Functions ---
@@ -145,6 +145,7 @@ class RNASegmenter(pl.LightningModule):
         outer = batch["seq_outer"].permute(0, 3, 1, 2)
         mask = batch["mask"].unsqueeze(1)
         energy = torch.tanh(batch["energy"])
+        #energy = batch["energy"]
         adj = batch["adj"].unsqueeze(1)
         
         if "ss_prob" in batch and batch["ss_prob"] is not None:
@@ -181,6 +182,16 @@ class RNADataModule(pl.LightningDataModule):
                 feature_parent_dir=self.data_config['feature_parent_dir']['val'],
                 energy_dict=self.energy_dict, energy_dist_dict=self.energy_dist_dict
             )
+        # Set up validation dataset when fitting OR validating
+        if stage in ('fit', 'validate') or stage is None:
+            # We check for val_root to avoid errors
+            if self.val_dataset is None and self.data_config.get('val_root'):
+                print("--- Setting up Validation Dataset ---")
+                self.val_dataset = RNADataset(
+                    root=self.data_config['val_root'],
+                    feature_parent_dir=self.data_config['feature_parent_dir'].get('val'),
+                    energy_dict=self.energy_dict, energy_dist_dict=self.energy_dist_dict
+                )
     
     def train_dataloader(self):
         return DataLoader(self.train_dataset, collate_fn=pad_collate, **self.loader_config['train'])
@@ -207,11 +218,11 @@ def main():
     DATA_CONFIG = {
         "train_root": "/workspace/ash/DAT/bprna/TR0",
         "val_root": "/workspace/ash/DAT/bprna/TS0",
-        "energy_dict_path": "/workspace/ash/code/RNA-FM/ash/avg_energy_stacking_k2.pkl",
-        "energy_dist_dict_path": "/workspace/ash/code/RNA-FM/ash/avg_energy_dist_k2.pkl",
+        "energy_dict_path": "./bp_fea/avg_energy_stacking_k2.pkl",
+        "energy_dist_dict_path": "./bp_fea/avg_energy_dist_k2.pkl",
         "feature_parent_dir": {
-            "train": "/workspace/ash/code/RNA0730/features/TR0", 
-            "val": "/workspace/ash/code/RNA0730/features/TS0"
+            "train": "/workspace/ash/code/RFMfold/ss_fea/tr0", 
+            "val": "/workspace/ash/code/RFMfold/ss_fea/ts0"
         }
     }
     LOADER_CONFIG = {

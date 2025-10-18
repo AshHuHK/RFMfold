@@ -83,88 +83,95 @@ def release_memory(model_name: str, device: str):
         torch.cuda.empty_cache()
         print("CUDA cache cleared.")
 
-# --- 各个模型的私有运行函数 ---
-def _run_rnaformer(args, device):
-    print("\n--- Running RNAformer Prediction ---")
-    config = Config(config_file=args.rnaformer_config)
-    model = RiboFormer(config.RNAformer)
-    state_dict = torch.load(args.rnaformer_state_dict, map_location=device)
-    model.load_state_dict(state_dict, strict=True)
-    model.to(device)
-    model.eval()
-    save_dir = os.path.join(args.ss_feature_dir, 'rnaformer')
-    os.makedirs(save_dir, exist_ok=True)
+def _run_rnaformer(seq, name_x, model, device, save_dir):
+    """(Private) Runs inference for a single sequence using a pre-loaded RNAformer model."""
     seq_vocab = ['A', 'C', 'G', 'U', 'N']
     seq_stoi = dict(zip(seq_vocab, range(len(seq_vocab))))
-    name_x = Path(args.fasta_file).stem
-    with open(args.fasta_file, 'r') as file: seq_x = "".join([l.strip() for l in file if not l.startswith('>')])
-    sequence_tensor = sequence2index_vector(seq_x, seq_stoi).unsqueeze(0).to(device)
+    sequence_tensor = sequence2index_vector(seq, seq_stoi).unsqueeze(0).to(device)
     src_len = torch.LongTensor([sequence_tensor.shape[-1]]).to(device)
     pdb_sample_tensor = torch.FloatTensor([[1]]).to(device)
     with torch.no_grad():
         logits, _ = model(sequence_tensor, src_len, pdb_sample_tensor)
         pred_mat = (torch.sigmoid(logits[0, :, :, -1].to(torch.float32))).cpu().numpy()
-    output_path = os.path.join(save_dir, f"{name_x}.npy")
+    output_path = os.path.join(save_dir, 'rnaformer', f"{name_x}.npy")
     np.save(output_path, pred_mat)
-    print(f"RNAformer prediction saved to {output_path}")
 
-def _run_mxfold2(args, device):
-    print("\n--- Running MXfold2 Prediction ---")
-    config = load_config_from_file_mxfold2(args.mxfold2_config)
-    model = build_model_mxfold2(config)
-    param_path = os.path.join(os.path.dirname(args.mxfold2_config), config.get('param'))
-    state_dict = torch.load(param_path, map_location=device)
-    if 'model_state_dict' in state_dict: state_dict = state_dict['model_state_dict']
-    model.load_state_dict(state_dict)
-    model.to(device)
-    model.eval()
-    save_dir = os.path.join(args.ss_feature_dir, 'mxfold2')
-    os.makedirs(save_dir, exist_ok=True)
-    with open(args.fasta_file, 'r') as f: seq = "".join([l.strip() for l in f if not l.startswith('>')])
+def _run_mxfold2(seq, name_x, model, device, save_dir):
+    """(Private) Runs inference for a single sequence using a pre-loaded MXfold2 model."""
     with torch.no_grad():
         _, _, bps = model([seq])
         contact_map = create_contact_map_mxfold2(bps[0], len(seq))
-    name_x = Path(args.fasta_file).stem
-    output_path = os.path.join(save_dir, f"{name_x}.npy")
+    output_path = os.path.join(save_dir, 'mxfold2', f"{name_x}.npy")
     np.save(output_path, contact_map.astype(np.float16))
-    print(f"MXfold2 prediction saved to {output_path}")
 
-def _run_rnafm(args, device):
-    print("\n--- Running RNA-FM Prediction ---")
-    model, alphabet = fm.downstream.build_rnafm_resnet(type="ss", model_location=args.rnafm_state_dict)
+def _run_rnafm(seq, name_x, model, alphabet, device, save_dir):
+    """(Private) Runs inference for a single sequence using a pre-loaded RNA-FM model."""
     batch_converter = alphabet.get_batch_converter()
-    model.to(device)
-    model.eval()
-    save_dir = os.path.join(args.ss_feature_dir, 'rnafm')
-    os.makedirs(save_dir, exist_ok=True)
-    name_x = Path(args.fasta_file).stem
-    with open(args.fasta_file, 'r') as f: seq = "".join([l.strip() for l in f if not l.startswith('>')])
     data = [(name_x, seq)]
     _, _, batch_tokens = batch_converter(data)
     batch_tokens = batch_tokens.to(device)
     with torch.no_grad():
         results = model({"token": batch_tokens})
-        ss_prob_map = results["r-ss"].squeeze(0).cpu().numpy()
-    output_path = os.path.join(save_dir, f"{name_x}.npy")
+        ss_prob_map = torch.sigmoid(results["r-ss"]).squeeze(0).cpu().numpy()
+    output_path = os.path.join(save_dir, 'rnafm', f"{name_x}.npy")
     np.save(output_path, ss_prob_map)
-    print(f"RNA-FM prediction saved to {output_path}")
 
-# --- 公开的接口函数 ---
-def generate_all_ss_features(args):
+
+# --- NEW: 分离模型加载和推理 ---
+
+def load_ss_generating_models(args, device):
+    """
+    (NEW) Loads all Stage 1 models into memory once.
+    Returns a dictionary of loaded models.
+    """
+    print("\n--- Loading all Stage 1 models... ---")
+    models = {}
+
+    # Load RNAformer
+    print("Loading RNAformer...")
+    config = Config(config_file=args.rnaformer_config)
+    rnaformer_model = RiboFormer(config.RNAformer)
+    state_dict = torch.load(args.rnaformer_state_dict, map_location=device)
+    rnaformer_model.load_state_dict(state_dict, strict=True)
+    rnaformer_model.to(device).eval()
+    models['rnaformer'] = rnaformer_model
     
-    print("==============================================")
-    print("= STAGE 1: Generating Secondary Structure Features =")
-    print("==============================================")
+    # Load MXfold2
+    print("Loading MXfold2...")
+    config_mxfold = load_config_from_file_mxfold2(args.mxfold2_config)
+    mxfold2_model = build_model_mxfold2(config_mxfold)
+    param_path = os.path.join(os.path.dirname(args.mxfold2_config), config_mxfold.get('param'))
+    state_dict_mxfold = torch.load(param_path, map_location=device)
+    if 'model_state_dict' in state_dict_mxfold: state_dict_mxfold = state_dict_mxfold['model_state_dict']
+    mxfold2_model.load_state_dict(state_dict_mxfold)
+    mxfold2_model.to(device).eval()
+    models['mxfold2'] = mxfold2_model
 
-    device = torch.device("cuda" if args.device == 'gpu' and torch.cuda.is_available() else "cpu")
+    # Load RNA-FM
+    print("Loading RNA-FM...")
+    rnafm_model, alphabet = fm.downstream.build_rnafm_resnet(type="ss", model_location=args.rnafm_state_dict)
+    rnafm_model.to(device).eval()
+    models['rnafm'] = (rnafm_model, alphabet) # RNA-FM needs alphabet too
 
-    _run_rnaformer(args, device)
-    release_memory("RNAformer", args.device)
+    print("All Stage 1 models loaded successfully.")
+    return models
+
+def generate_ss_features_for_sequence(seq, name, loaded_models, device, save_dir):
+    """
+    (NEW) Generates all SS features for a single sequence using pre-loaded models.
+    """
+    print(f"\n--- Generating SS features for: {name} ---")
     
-    _run_mxfold2(args, device)
-    release_memory("MXfold2", args.device)
-    
-    _run_rnafm(args, device)
-    release_memory("RNA-FM", args.device)
+    # 确保每个子目录都存在
+    for model_name in loaded_models.keys():
+        os.makedirs(os.path.join(save_dir, model_name), exist_ok=True)
+        
+    _run_rnaformer(seq, name, loaded_models['rnaformer'], device, save_dir)
+    print(f"RNAformer prediction saved for {name}")
 
-    print("\n--- Stage 1 complete. All SS features generated. ---")
+    _run_mxfold2(seq, name, loaded_models['mxfold2'], device, save_dir)
+    print(f"MXfold2 prediction saved for {name}")
+    
+    rnafm_model, alphabet = loaded_models['rnafm']
+    _run_rnafm(seq, name, rnafm_model, alphabet, device, save_dir)
+    print(f"RNA-FM prediction saved for {name}")
