@@ -66,6 +66,7 @@ The codes have been tested on a Ubuntu 24.04 system with GeForce RTX 4090 GPU.
 
    ```bash
    bash install_env.sh
+   conda activate RFMfold
    ```
    **Note**: During the installation process, you may be prompted to confirm installations.
 
