@@ -1,186 +1,225 @@
 # RFMfold: Accurate RNA secondary structure prediction with large RNA language models and ensemble learning
 
-RFMfold is an advanced ensemble learning framework for RNA secondary structure prediction. It uniquely integrates pre-trained RNA foundation models (like RNA-FM), energy parameters, and outputs from other state-of-the-art predictors to achieve enhanced accuracy and flexibility.
+RFMfold is an advanced ensemble learning framework for RNA secondary structure prediction. It uniquely integrates
+pre-trained RNA foundation models (like RNA-FM), energy parameters, and outputs from other state-of-the-art predictors
+to achieve enhanced accuracy and flexibility.
 
-This repository provides a ready-to-use inference pipeline as well as a fully customizable training pipeline, allowing users to either get predictions out-of-the-box or build their own specialized ensemble models.
+This repository provides a ready-to-use inference pipeline as well as a fully customizable training pipeline, allowing
+users to either get predictions out-of-the-box or build their own specialized ensemble models.
 
 ![Model Architecture Diagram](https://github.com/AshHuHK/RFMfold/blob/main/fig.png)
 
 
-## Key Features
+## Table of contents
 
-- **RNA-Foundation-model**: Default integration with our RNA large language model RNA-FM to provide rich representations and accurate predictions.
-- **Ensemble Power**: Leverages a meta-learning approach by combining RNA-FM predictions with base predictions from multiple models.
-- **Energy-Aware**: Flexibly incorporates energy parameters as a feature, grounding predictions in biophysical principles.
-- **Highly Modular**: Easily integrate or replace base prediction models (e.g. RNAformer, MXfold2) without changing the core architecture.
-- **Trainable**: Provides a complete training pipeline using PyTorch Lightning for users who wish to train RFMfold on their own data or with a custom set of base predictors.
+[//]: # (- [Key Features]&#40;#key-features&#41;)
+- [Quick Start](#quick-start)
+  - [Installation](#installation)
+  - [Inference](#inference)
+- [Training](#training)
+  - [Data Preparation](#data-preparation)
+  - [Start Training](#start-training)
+- [Contact](#contact)
 
-## Installation
+[//]: # (## Key Features)
 
-Getting RFMfold set up is straightforward. The following steps will create a dedicated `conda` environment with all the necessary dependencies.
+[//]: # ()
+[//]: # (- **RNA-Foundation-model**: Default integration with our RNA large language model RNA-FM to provide rich representations)
 
-1.  **Clone the Repository**
+[//]: # (  and accurate predictions.)
 
-    ```bash
-    git clone https://github.com/Ash-Hu-123/RFMfold.git
-    cd RFMfold
-    ```
+[//]: # (- **Ensemble Power**: Leverages a meta-learning approach by combining RNA-FM predictions with base predictions from)
 
-2.  **Run the Installation Script**
+[//]: # (  multiple models.)
 
-    This script will set up a Conda environment named `RFMfold` and install all required packages.
+[//]: # (- **Energy-Aware**: Flexibly incorporates energy parameters as a feature, grounding predictions in biophysical)
 
-    ```bash
-    bash install_env.sh
-    ```    > **Note**: During the installation process, you may be prompted to confirm installations. Please answer `yes` to all prompts to ensure a complete setup.
+[//]: # (  principles.)
 
-# RFMfold — Validation Pipeline
+[//]: # (- **Highly Modular**: Easily integrate or replace base prediction models &#40;e.g. RNAformer, MXfold2&#41; without changing the)
 
-Minimal, logical steps to reproduce validation F1 on your dataset.
+[//]: # (  core architecture.)
 
-## 1) Steps
+[//]: # (- **Trainable**: Provides a complete training pipeline using PyTorch Lightning for users who wish to train RFMfold on)
 
-Prepare your validation data, the final architecture should be as follows, make sure **basenames match** across FASTA / BPSEQ (e.g., `foo.fasta` ↔ `foo.bpseq`).
+[//]: # (  their own data or with a custom set of base predictors.)
 
-### Step A — Prepare data  
-Place your files as:  
-```
-./data/ts0/fasta/*.fasta  
-./data/ts0/bpseq/*.bpseq
-```
-the file architecture should be as follows,
-```text
-project/
-├─ data/ts0/
-│  ├─ fasta/        # input .fasta
-│  └─ bpseq/        # reference .bpseq
-```
-### Step B — Generate SS features (Stage 1)
+## Quick Start
+
+Getting RFMfold set up is straightforward. The following steps will create a dedicated `conda` environment with all the
+necessary dependencies.
+
+### Installation
+
+1. **Clone the Repository**
+
+   ```bash
+   git clone https://github.com/AshHuHK/RFMfold.git
+   cd RFMfold
+   ```
+
+2. **Run the Installation Script**
+
+   This script will set up a Conda environment named `RFMfold` and install all required packages.
+
+   ```bash
+   bash install_env.sh
+   ```
+   **Note**: During the installation process, you may be prompted to confirm installations.
+
+### Inference
+
+The following steps guide you through running RFMfold inference on your own RNA sequences to obtain secondary structure
+predictions. We have included example data in the `data/example/` directory for demonstration purposes.
+
+**Step 1. Prepare data**. A `.fasta` file containing a single RNA sequences and a `.bpseq` file containing the native secondary structure is required for each prediction and evaluation.
+The `.fasta` and `.bpseq` files should be placed under two separate folders, but ensure that the file names (excluding extensions) match between the `.fasta` and `.bpseq` files.
+
+**Step 2. Generate secondary structure features**. Run the following command to generate secondary structure probability matrices from the base models.
+
 ```bash 
-python3 infer_ss_batch.py \
-  --input_dir ./data/ts0/fasta \
-  --ss_feature_dir ./ss_fea
+python3 infer_ss_batch.py --input_dir ./data/example/fasta --ss_feature_dir ./ss_fea
 ```
 
-### Step C — Run RFMfold validation (Stage 2)
-```
-#sets: val_root = ./data/ts0/ in run_val.py
-python3 run_val.py
-```
+**Step 3. Run RFMfold**. Finally, execute the RFMfold validation script to obtain secondary structure predictions and evaluate performance.
 
-On completion, the script prints **macro/micro F1** to the console.
-
----
-
-## 2) How It Works
-
-### Stage 1 — SS Feature Generation
-
-* Loads pretrained **RNA-FM**, **RNAformer**, **MXfold2**.
-* Predicts per-sequence **SS probability matrices** and saves to:
-
-```text
-ss_fea/
-  rnafm/<name>.npy
-  rnaformer/<name>.npy
-  mxfold2/<name>.npy
+```bash
+python3 run_val.py --val_root ./data/example
 ```
 
-### Stage 2 — RFMfold Validation
+On completion, the script prints the **macro/micro F1-score** to the console.
 
-* Loads the RFMfold model (optionally from a checkpoint).
-* Inputs: sequence features, **energy params**, and **Stage-1 SS features**.
-* Outputs: **validation F1** (printed/logged).
 
----
+[//]: # (---)
 
-Beyond direct inference, RFMfold offers exceptional flexibility for creating custom ensembles. You can decide which base prediction methods to integrate and retrain the RFMfold meta-model to specialize in your dataset.
+[//]: # ()
+[//]: # (## 2&#41; How It Works)
 
-# RFMfold — Training Pipeline
+[//]: # ()
+[//]: # (### Stage 1 — SS Feature Generation)
 
-### Preparing Data for Training
+[//]: # ()
+[//]: # (* Loads pretrained **RNA-FM**, **RNAformer**, **MXfold2**.)
 
-To train RFMfold, you need to provide it with pre-computed secondary structure predictions from your chosen base models for example running `infer_ss_batch.py`. Here is a step-by-step guide using the bpRNA dataset as an example.
+[//]: # (* Predicts per-sequence **SS probability matrices** and saves to:)
 
-1.  **Create the Directory Structure**
+[//]: # ()
+[//]: # (```text)
 
-    Inside the `ss_fea/` directory, create `train` and `val` subdirectories. Then, for each base prediction method you want to include in your ensemble, create a corresponding subdirectory within both `train` and `val`.
+[//]: # (ss_fea/)
 
-    The final structure should look like this:
+[//]: # (  rnafm/<name>.npy)
+
+[//]: # (  rnaformer/<name>.npy)
+
+[//]: # (  mxfold2/<name>.npy)
+
+[//]: # (```)
+
+[//]: # ()
+[//]: # (### Stage 2 — RFMfold Validation)
+
+[//]: # ()
+[//]: # (* Loads the RFMfold model &#40;optionally from a checkpoint&#41;.)
+
+[//]: # (* Inputs: sequence features, **energy params**, and **Stage-1 SS features**.)
+
+[//]: # (* Outputs: **validation F1** &#40;printed/logged&#41;.)
+
+[//]: # ()
+[//]: # (---)
+
+[//]: # (Beyond direct inference, RFMfold offers exceptional flexibility for creating custom ensembles. You can decide which base)
+[//]: # (prediction methods to integrate and retrain the RFMfold meta-model to specialize in your dataset.)
+
+## Training
+
+### Data Preparation
+
+To train RFMfold, you need to provide it with pre-computed secondary structure predictions from your chosen base models. 
+Here is a step-by-step guide using the bpRNA dataset as an example.
+
+1. **Prepare features**
+
+   Inside the `ss_fea/` directory, create `train` and `val` subdirectories. Then, for each base prediction method you
+   want to include in your ensemble, create a corresponding subdirectory within both `train` and `val`. For example, the final structure should look like:
+   ```
+   ss_fea/
+   ├── train/
+   │   ├── method1/
+   │   │   ├── sequence1.npy
+   │   │   ├── sequence2.npy
+   │   │   └── ...
+   │   ├── method2/
+   │   │   ├── sequence1.npy
+   │   │   └── ...
+   │   └── ...
+   └── val/
+       ├── method1/
+       │   ├── sequence_val_1.npy
+       │   └── ...
+       ├── method2/
+       │   ├── sequence_val_1.npy
+       │   └── ...
+       └── ...
     ```
-    ss_fea/
-    ├── train/
-    │   ├── method1/
-    │   │   ├── sequence1.npy
-    │   │   ├── sequence2.npy
-    │   │   └── ...
-    │   ├── method2/
-    │   │   ├── sequence1.npy
-    │   │   └── ...
-    │   └── ...
-    └── val/
-        ├── method1/
-        │   ├── sequence_val_1.npy
-        │   └── ...
-        ├── method2/
-        │   ├── sequence_val_1.npy
-        │   └── ...
-        └── ...
-     ```
-2.  **Create the Training Data**
    
-       For the training labels and data, RFMfold by default use bpseq format and fasta to train, by default the data should organized to look like below,
-   
-     ```
-    xx_dataset/
-    ├── train/
-    │   ├── bpseq/
-    │   │   ├── sequence1.bpseq
-    │   │   ├── sequence2.bpseq
-    │   │   └── ... 
-    │   │
-    │   └── fasta/
-    │       ├── sequence1.fasta
-    │       ├── sequence2.fasta
-    │       └── ...
-    │
-    └── val/
-        ├── bpseq/
-        │   ├── val_sequence1.bpseq
-        │   ├── val_sequence2.bpseq
-        │   └── ...
-        │
-        └── fasta/
-            ├── val_sequence1.fasta
-            ├── val_sequence2.fasta
-            └── ...
-          
-4.  **Generate Ensembling Probability Matrices**
+2. **Prepare labels**
 
-    For each base model (`method1`, `method2`, etc.), run its prediction on your entire training and validation datasets. Save each output as a 2D probability matrix in `.npy` format. The filename of the `.npy` file must match the name of the corresponding sequence file. For example run
+   For the training labels (ground truth secondary structures), RFMfold by default use `.bpseq` format and fasta to train the model. The label files should be organized as follows:
+
     ```
-    python3 infer_ss_batch.py --input_dir ./data/val/fasta --ss_feature_dir ./ss_fea/val
-    ```
-    results will be save in ss_fea/val.
+   path/to/dataset/
+   ├── train/
+   │   ├── bpseq/
+   │   │   ├── sequence1.bpseq
+   │   │   ├── sequence2.bpseq
+   │   │   └── ... 
+   │   │
+   │   └── fasta/
+   │       ├── sequence1.fasta
+   │       ├── sequence2.fasta
+   │       └── ...
+   │
+   └── val/
+       ├── bpseq/
+       │   ├── val_sequence1.bpseq
+       │   ├── val_sequence2.bpseq
+       │   └── ...
+       │
+       └── fasta/
+           ├── val_sequence1.fasta
+           ├── val_sequence2.fasta
+           └── ...
 
-    
-5.  **Configure the Training Script**
+3. **Generate ensembling probability matrices**
 
-    Open the `pl_train.py` script and locate the `DATA_CONFIG` dictionary. Update the directory paths to point to your datasets and feature locations.
+   For each base model (`method1`, `method2`, etc.), run its prediction on your entire training and validation datasets.
+   Save each output as a 2D probability matrix in `.npy` format. The filename of the `.npy` file must match the name of
+   the corresponding sequence file. Run the following two commands to generate the data for the training and validation sets, respectively:
+   ```bash
+   python3 infer_ss_batch.py --input_dir ./data/train/fasta --ss_feature_dir ./ss_fea/train
+   python3 infer_ss_batch.py --input_dir ./data/val/fasta --ss_feature_dir ./ss_fea/val
+   ```
 
-    ```python
-    # Inside pl_train.py
-    DATA_CONFIG = {
-        "train_root": "/path/to/your/bprna/TR0", # Contains fasta/ and bpseq/ for training
-        "val_root": "/path/to/your/bprna/TS0",   # Contains fasta/ and bpseq/ for validation
-        "energy_dict_path": "./bp_fea/avg_energy_stacking_k2.pkl",
-        "energy_dist_dict_path": "./bp_fea/avg_energy_dist_k2.pkl",
-        "feature_parent_dir": {
-            "train": "./ss_fea/train", # Points to your generated train features
-            "val": "./ss_fea/val"      # Points to your generated validation features
-        }
-    }
-    ```
+4. **Configure the training script**
+
+   Open the `pl_train.py` script and locate the `DATA_CONFIG` dictionary. Update the directory paths to point to your
+   datasets and feature locations.
+
+   ```python
+   # Inside pl_train.py
+   DATA_CONFIG = {
+       "train_root": "/path/to/your/bprna/TR0", # Contains fasta/ and bpseq/ for training
+       "val_root": "/path/to/your/bprna/TS0",   # Contains fasta/ and bpseq/ for validation
+       "energy_dict_path": "./bp_fea/avg_energy_stacking_k2.pkl",
+       "energy_dist_dict_path": "./bp_fea/avg_energy_dist_k2.pkl",
+       "feature_parent_dir": {
+           "train": "./ss_fea/train", # Points to your generated train features
+           "val": "./ss_fea/val"      # Points to your generated validation features
+       }
+   }
+   ```
 
 ### Start Training
 
@@ -191,4 +230,10 @@ Once your data is prepared and the configuration is set, start the training proc
 python pl_train.py
 ```
 
-The script will automatically detect the feature methods from your directory structure, configure the model channels, and begin training. The model checkpoints with the best validation F1 score will be saved automatically to the `checkpoints_lightning/` directory.
+The script will automatically detect the feature methods from your directory structure, configure the model channels,
+and begin training. The model checkpoints with the best validation F1 score will be saved automatically to the
+`checkpoints_lightning/` directory.
+
+## Contact
+
+For questions or support, please open an issue on the GitHub repository or contact the authors directly.
