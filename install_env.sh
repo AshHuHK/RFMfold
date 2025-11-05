@@ -2,6 +2,7 @@ conda create -n RFMfold python=3.8
 CONDA_BASE_PATH=$(conda info --base)
 source "$CONDA_BASE_PATH/etc/profile.d/conda.sh"
 conda activate RFMfold
+conda install nvidia::cuda-nvcc -y
 cd ./ss_models/mxfold2
 pip install -e .
 cd ../RNAformer
