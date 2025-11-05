@@ -49,6 +49,8 @@ users to either get predictions out-of-the-box or build their own specialized en
 Getting RFMfold set up is straightforward. The following steps will create a dedicated `conda` environment with all the
 necessary dependencies.
 
+The codes have been tested on a Ubuntu 24.04 system with GeForce RTX 4090 GPU.
+
 ### Installation
 
 1. **Clone the Repository**
