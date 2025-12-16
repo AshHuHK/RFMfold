@@ -68,6 +68,7 @@ The codes have been tested on a Ubuntu 24.04 system with GeForce RTX 4090 GPU.
    bash install_env.sh
    conda activate RFMfold
    ```
+<<<<<<< HEAD
    
 Issue:
 fatal error: crypt.h: No such file or directory
@@ -75,6 +76,8 @@ conda install conda-forge::libxcrypt
 
 To Do:
 1.RNA-FM download link update
+=======
+>>>>>>> 7d4206449c8e6fc1a7f830cda0e9e170b80c5988
 
 ### Inference
 
