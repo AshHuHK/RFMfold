@@ -10,7 +10,7 @@ from .backbones import choose_backbone
 from .pairwise_predictor import choose_pairwise_predictor
 
 from .weights_init import *
-from ptflops import get_model_complexity_info
+#from ptflops import get_model_complexity_info
 from torch.cuda.amp import autocast
 
 class Baseline(nn.Module):

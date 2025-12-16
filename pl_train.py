@@ -5,15 +5,49 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
+from polars.interchange.utils import polars_dtype_to_dtype_map
 from torch.utils.data import DataLoader
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, TQDMProgressBar
 import pickle
+from config import _C as cfg
+import argparse
+from yacs.config import CfgNode
+import numpy as np
 
 # --- Import user-defined modules ---
 from rfmfold import RFMfold
 from data import RNADataset, pad_collate
 
+import logging
+logger = logging.getLogger(__name__)
+
 # --- Utility Functions ---
+_VALID_TYPES = {tuple, list, str, int, float, bool, type(None)}
+def convert_to_dict(cfg_node, key_list):
+    def _assert_with_logging(cond, msg):
+        if not cond:
+            logger.debug(msg)
+        assert cond, msg
+
+    def _valid_type(value, allow_cfg_node=False):
+        return (type(value) in _VALID_TYPES) or (
+                allow_cfg_node and isinstance(value, CfgNode)
+        )
+
+    if not isinstance(cfg_node, CfgNode):
+        _assert_with_logging(
+            _valid_type(cfg_node),
+            "Key {} with value {} is not a valid type; valid types: {}".format(
+                ".".join(key_list), type(cfg_node), _VALID_TYPES
+            ),
+        )
+        return cfg_node
+    else:
+        cfg_dict = dict(cfg_node)
+        for k, v in cfg_dict.items():
+            cfg_dict[k] = convert_to_dict(v, key_list + [k])
+        return cfg_dict
+
 def load_from_pickle(path):
     with open(path, "rb") as f:
         return pickle.load(f)
@@ -84,9 +118,11 @@ class RNASegmenter(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.model = RFMfold(**model_config)
+        print(self.model)
         self.current_sample_ratio = sampler_config['start_ratio']
         self.validation_step_outputs = []
-        
+        self.save_ss_dir = None
+
     def forward(self, x_main, energy, ss_fea, mask):
         return self.model(x_main, energy, ss_fea, mask)
 
@@ -112,7 +148,25 @@ class RNASegmenter(pl.LightningModule):
         logits = logits - torch.diag_embed(torch.diagonal(logits, dim1=-2, dim2=-1))
         
         preds = (torch.sigmoid(logits) > 0.5).float()
-        
+
+        if adj is not None:
+            tp, fp, fn, f1_list = calculate_f1_metrics(preds, adj.squeeze(1), mask.squeeze(1))
+            self.validation_step_outputs.append({'tp': tp, 'fp': fp, 'fn': fn, 'f1_list': f1_list})
+        else:
+            raise Exception("No Available Labels for Validation Step!")
+
+    def predict_step(self, batch, batch_idx):
+        outer, energy, ss_fea, adj, mask = self._prepare_batch(batch)
+        logits = self(outer, energy, ss_fea, mask).squeeze(1)
+
+        logits = 0.5 * (logits + logits.transpose(1, 2))
+        logits = logits - torch.diag_embed(torch.diagonal(logits, dim1=-2, dim2=-1))
+
+        preds = (torch.sigmoid(logits) > 0.5).float()
+
+        if self.save_ss_dir is not None:
+            self.save_ss(batch, preds)
+
         tp, fp, fn, f1_list = calculate_f1_metrics(preds, adj.squeeze(1), mask.squeeze(1))
         self.validation_step_outputs.append({'tp': tp, 'fp': fp, 'fn': fn, 'f1_list': f1_list})
 
@@ -146,7 +200,10 @@ class RNASegmenter(pl.LightningModule):
         mask = batch["mask"].unsqueeze(1)
         energy = torch.tanh(batch["energy"])
         #energy = batch["energy"]
-        adj = batch["adj"].unsqueeze(1)
+        if batch["adj"] is not None:
+            adj = batch["adj"].unsqueeze(1)
+        else:
+            adj = None
         
         if "ss_prob" in batch and batch["ss_prob"] is not None:
             ss_prob = batch["ss_prob"]
@@ -155,6 +212,131 @@ class RNASegmenter(pl.LightningModule):
         else:
             ss_fea = torch.empty(outer.shape[0], 0, *outer.shape[2:], device=self.device)
         return outer, energy, ss_fea, adj, mask
+
+    def postprocess(self, prob_map, seq, threshold=0.5, allow_nc=True):
+        # we suppose that probmay cantains values range from [0,1], so is the threshold
+        canonical_pairs = ['AU', 'UA', 'GC', 'CG', 'GU', 'UG']
+
+        prob_map = prob_map * (1 - np.eye(prob_map.shape[0]))  # no  care about the diagonal
+        pred_map = (prob_map > threshold)
+
+        seq_len = len(seq)
+        x_array, y_array = np.nonzero(pred_map)
+        prob_array = []
+        for i in range(x_array.shape[0]):
+            prob_array.append(prob_map[x_array[i], y_array[i]])
+        prob_array = np.array(prob_array)
+
+        sort_index = np.argsort(-prob_array)
+
+        mask_map = np.zeros_like(pred_map)
+        already_x = set()
+        already_y = set()
+        multiplet_list = []
+        for index in sort_index:
+            x = x_array[index]
+            y = y_array[index]
+
+            # # no sharp stem-loop
+            if abs(x - y) <= 1:  # when <=1, allow 1 element loop
+                continue
+
+            seq_pair = seq[x] + seq[y]
+            if seq_pair not in canonical_pairs and allow_nc == False:
+                # print(seq_pair)
+                continue
+                pass
+
+            if x in already_x or y in already_y:  # this is conflict
+                multiplet_list.append([x + 1, y + 1])
+                continue
+            else:
+                mask_map[x, y] = 1
+                already_x.add(x)
+                already_y.add(y)
+
+        pred_map_without_multiplets = pred_map * mask_map
+
+        return pred_map, pred_map_without_multiplets, multiplet_list
+
+    def matrix2ct(self, prob_map, seq, seq_id, ct_dir, threshold=0.5, with_post=False, nc=False):
+        """
+        :param contact: binary matrix numpy
+        :param seq: string
+        :return:
+        """
+        # 1.process matrix to make it obey the required constraints (maybe need sequence string)
+        if with_post == True:
+            pred_map, pred_map_without_multiplets, multiplet_list = self.postprocess(
+                prob_map, threshold=threshold, seq=seq, allow_nc=True
+            )
+            contact = pred_map_without_multiplets
+        else:
+            if threshold > 0:
+                contact = (prob_map > threshold)
+            else:
+                contact = prob_map
+
+        # 2.write ct file
+        seq_len = len(seq)
+        structure = np.where(contact)
+        pair_dict = dict()
+        for i in range(seq_len):
+            pair_dict[i] = -1
+        for i in range(len(structure[0])):
+            pair_dict[structure[0][i]] = structure[1][i]
+        first_col = list(range(1, seq_len + 1))
+        second_col = list(seq)
+        third_col = list(range(seq_len))
+        fourth_col = list(range(2, seq_len + 2))
+        fifth_col = [pair_dict[i] + 1 for i in range(seq_len)]
+        last_col = list(range(1, seq_len + 1))
+
+        if os.path.exists(ct_dir) != True:
+            os.makedirs(ct_dir)
+        ct_file = os.path.join(ct_dir, seq_id + ".ct")
+
+        with open(ct_file, "w") as f:
+            f.write("{}\t{}\n".format(seq_len, seq_id))  # header
+            for i in range(seq_len):
+                f.write("{}\t{}\t{}\t{}\t{}\t{}\n".format(first_col[i], second_col[i], third_col[i], fourth_col[i],
+                                                          fifth_col[i], last_col[i]))
+
+
+    def set_save_ss_dir(self, save_ss_dir: str, threshold: float=0.5, allow_nc: bool=True):
+        self.save_ss_dir = save_ss_dir
+        self.save_prob_dir = os.path.join(self.save_ss_dir, 'prob')
+        os.makedirs(self.save_prob_dir, exist_ok=True)
+        self.save_cm_fb_dir = os.path.join(self.save_ss_dir, 'cm_fb')
+        os.makedirs(self.save_cm_fb_dir, exist_ok=True)
+        self.save_cm_nm_dir = os.path.join(self.save_ss_dir, 'cm_nm')
+        os.makedirs(self.save_cm_nm_dir, exist_ok=True)
+        self.save_ct_dir = os.path.join(self.save_ss_dir, 'ct')
+        os.makedirs(self.save_ct_dir, exist_ok=True)
+        self.threshold = threshold
+        self.allow_nc = allow_nc
+
+    def save_ss(self, batch, preds):
+        names = batch['names']
+        seqs = batch['seq_str']
+        lengths = batch['lengths']
+        for i in range(len(names)):
+            name = names[i]
+            length = lengths[i]
+            seq = seqs[i]
+            prob_map = preds[i][:length, :length].cpu().numpy()
+
+            np.save(os.path.join(self.save_prob_dir, "{}".format(name)), prob_map)
+
+            # 1.with multiplets 2.without multiplets (can create ct, dot);
+            post_map, post_map_nomlets, multiplet_list = self.postprocess(
+                prob_map, seq, threshold=self.threshold, allow_nc=self.allow_nc
+            )
+            np.save(os.path.join(self.save_cm_fb_dir, "{}".format(name)), post_map)
+            np.save(os.path.join(self.save_cm_nm_dir, "{}".format(name)), post_map_nomlets)
+
+            # save ct file, with post_without_mbp_numpy
+            self.matrix2ct(post_map_nomlets, seq, name, self.save_ct_dir, threshold=self.threshold, with_post=False, nc=self.allow_nc)
 
 # ============================================================================
 # 3. LightningDataModule
@@ -175,22 +357,25 @@ class RNADataModule(pl.LightningDataModule):
             self.train_dataset = RNADataset(
                 root=self.data_config['train_root'],
                 feature_parent_dir=self.data_config['feature_parent_dir']['train'],
-                energy_dict=self.energy_dict, energy_dist_dict=self.energy_dist_dict
+                energy_dict=self.energy_dict, energy_dist_dict=self.energy_dist_dict,
+                active_methods=self.data_config['active_methods'],
             )
             self.val_dataset = RNADataset(
                 root=self.data_config['val_root'],
                 feature_parent_dir=self.data_config['feature_parent_dir']['val'],
-                energy_dict=self.energy_dict, energy_dist_dict=self.energy_dist_dict
+                energy_dict=self.energy_dict, energy_dist_dict=self.energy_dist_dict,
+                active_methods = self.data_config['active_methods'],
             )
         # Set up validation dataset when fitting OR validating
-        if stage in ('fit', 'validate') or stage is None:
+        if stage in ('fit', 'validate', 'predict') or stage is None:
             # We check for val_root to avoid errors
             if self.val_dataset is None and self.data_config.get('val_root'):
                 print("--- Setting up Validation Dataset ---")
                 self.val_dataset = RNADataset(
                     root=self.data_config['val_root'],
                     feature_parent_dir=self.data_config['feature_parent_dir'].get('val'),
-                    energy_dict=self.energy_dict, energy_dist_dict=self.energy_dist_dict
+                    energy_dict=self.energy_dict, energy_dist_dict=self.energy_dist_dict,
+                    active_methods=self.data_config['active_methods'],
                 )
     
     def train_dataloader(self):
@@ -199,44 +384,32 @@ class RNADataModule(pl.LightningDataModule):
     def val_dataloader(self):
         return DataLoader(self.val_dataset, collate_fn=pad_collate, **self.loader_config['val'])
 
+    def predict_dataloader(self):
+        return DataLoader(self.val_dataset, collate_fn=pad_collate, **self.loader_config['val'])
+
 # ============================================================================
 # 4. Main Execution
 # ============================================================================
 def main():
-    # --- Centralized Configurations ---
-    MODEL_CONFIG = {
-        "main_ch": 16, "energy_ch": 2, "ss_fea_ch": -1, # ss_fea_ch is set dynamically
-        "base_ch": 128, "depth": 6, "drop_p": 0.15,
-        "dilations": (1, 2, 4, 8, 16)
-    }
-    OPTIMIZER_CONFIG = {"lr": 1e-4}
-    SCHEDULER_CONFIG = {"step_size": 10, "gamma": 0.5}
-    SAMPLER_CONFIG = {
-        "start_ratio": 0.5, "end_ratio": 0.6, 
-        "step_factor": 0.01, "step_every_n_epochs": 2
-    }
-    DATA_CONFIG = {
-        "train_root": "/workspace/ash/DAT/bprna/TR0",
-        "val_root": "/workspace/ash/DAT/bprna/TS0",
-        "energy_dict_path": "./bp_fea/avg_energy_stacking_k2.pkl",
-        "energy_dist_dict_path": "./bp_fea/avg_energy_dist_k2.pkl",
-        "feature_parent_dir": {
-            "train": "/workspace/ash/code/RFMfold/ss_fea/tr0", 
-            "val": "/workspace/ash/code/RFMfold/ss_fea/ts0"
-        }
-    }
-    LOADER_CONFIG = {
-        "train": {"batch_size": 8, "shuffle": True, "num_workers": 4},
-        "val": {"batch_size": 8, "shuffle": False, "num_workers": 4}
-    }
-    TRAINER_CONFIG = {
-        "max_epochs": 100,
-        "accelerator": "gpu",
-        "devices": "auto",
-        "strategy": "ddp",
-        "precision": "16-mixed",
-        "log_every_n_steps": 10
-    }
+    parser = argparse.ArgumentParser(description="Classification Baseline Training")
+    parser.add_argument(
+        "--config_file", default="", help="path to config file", type=str
+    )
+    parser.add_argument("opts", help="Modify config options using the command-line", default=None,
+                        nargs=argparse.REMAINDER)  # nargs=argparse.REMAINDER是指所有剩余的参数均转化为一个列表赋值给此项
+    args = parser.parse_args()
+
+    if args.config_file != "":
+        cfg.merge_from_file(args.config_file)
+    cfg.merge_from_list(args.opts)
+
+    MODEL_CONFIG = convert_to_dict(cfg.MODEL, [])
+    OPTIMIZER_CONFIG = convert_to_dict(cfg.OPTIMIZER, [])
+    SCHEDULER_CONFIG = convert_to_dict(cfg.SCHEDULER, [])
+    SAMPLER_CONFIG = convert_to_dict(cfg.SAMPLER, [])
+    DATA_CONFIG = convert_to_dict(cfg.DATA, [])
+    LOADER_CONFIG = convert_to_dict(cfg.LOADER, [])
+    TRAINER_CONFIG = convert_to_dict(cfg.TRAINER, [])
 
     # --- Initialization and Dynamic Configuration ---
     pl.seed_everything(3407, workers=True)

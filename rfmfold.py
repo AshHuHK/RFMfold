@@ -97,7 +97,6 @@ class EnergyAwareCoordResConv2d(nn.Module):
         return self.relu(y + res)
 
 
-
 class DropBlock2d(nn.Module):
     def __init__(self, block_size=7, drop_prob=0.1):
         super().__init__()

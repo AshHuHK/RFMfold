@@ -70,19 +70,27 @@ class RNADataset(Dataset):
         root: str,
         feature_parent_dir: Optional[str] = None,
         energy_dict: Optional[Dict] = None,
-        energy_dist_dict: Optional[Dict] = None
+        energy_dist_dict: Optional[Dict] = None,
+        active_methods: List[str] = None,
     ):
         self.root = Path(root)
         self.fasta_dir = self.root / "fasta"
+        if os.path.exists(self.fasta_dir) != True:
+            raise FileNotFoundError(f"Fasta dir {self.fasta_dir} does not exist")
         self.ss_dir = self.root / "bpseq"
+        if os.path.exists(self.ss_dir) != True:
+            print(f"SS dir {self.ss_dir} does not exist, so the metrics cannot be computed.")
+            self.ss_dir = None
         self.energy_dict = energy_dict
         self.energy_dist_dict = energy_dist_dict
+        self.active_methods = active_methods
 
         if not self.root.exists():
             raise FileNotFoundError(f"Root dir {self.root} does not exist")
 
         fasta_paths = {p.stem.lower(): p for p in self.fasta_dir.glob("*") if p.suffix.lower() in {".fasta", ".fa"}}
-        bpseq_paths = {p.stem.lower(): p for p in self.ss_dir.glob("*") if p.suffix.lower() == ".bpseq"}
+        if self.ss_dir is not None:
+            bpseq_paths = {p.stem.lower(): p for p in self.ss_dir.glob("*") if p.suffix.lower() == ".bpseq"}
 
         # --- Automated feature directory scanning ---
         self.feature_methods = []
@@ -94,6 +102,8 @@ class RNADataset(Dataset):
             
             for method_dir in parent_path.iterdir():
                 if method_dir.is_dir():
+                    if self.active_methods is not None and method_dir.name not in self.active_methods:
+                        continue
                     method_name = method_dir.name
                     print(f"  Scanning feature method: '{method_name}'...")
                     self.feature_methods.append(method_name)
@@ -105,7 +115,10 @@ class RNADataset(Dataset):
         self.feature_methods.sort()
 
         # --- Intersect samples to find common set ---
-        common_samples = set(fasta_paths.keys()) & set(bpseq_paths.keys())
+        if self.ss_dir is not None:
+            common_samples = set(fasta_paths.keys()) & set(bpseq_paths.keys())
+        else:
+            common_samples = set(fasta_paths.keys())
         if not common_samples:
             raise ValueError("No common samples found between fasta and bpseq directories")
         
@@ -120,7 +133,8 @@ class RNADataset(Dataset):
         
         # 从原始的路径字典中，根据最终的样本名列表来构建映射
         self.fasta_map = {k: fasta_paths[k] for k in self.samples}
-        self.bpseq_map = {k: bpseq_paths[k] for k in self.samples}
+        if self.ss_dir is not None:
+            self.bpseq_map = {k: bpseq_paths[k] for k in self.samples}
 
         #print(f"Found {len(self.samples)} common samples across {len(self.feature_methods)} feature methods.")
 
@@ -136,12 +150,14 @@ class RNADataset(Dataset):
         
         item = {
             "onehot": seq_to_onehot(seq),
-            "adj": read_bpseq(self.bpseq_map[key], L),
             "energy": build_symmetric_energy_matrix(seq, self.energy_dict, self.energy_dist_dict),
             "name": key,
             "length": L,
             "seq": seq,
         }
+
+        if self.ss_dir is not None:
+            item["adj"] = read_bpseq(self.bpseq_map[key], L)
 
         # --- Load and process all features for the sample ---
         if self.feature_maps:
@@ -204,7 +220,10 @@ def pad_collate(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]
         L = item["length"]
         valid_pos[i, :L] = 1.0
         seq_batch[i, :L, :] = item["onehot"]
-        adj_batch[i, :L, :L] = item["adj"]
+        if "adj" in item:
+            adj_batch[i, :L, :L] = item["adj"]
+        else:
+            adj_batch = None
         ene_batch[i, :L, :L, :] = item["energy"]
         if has_ss and "ss_prob" in item and item["ss_prob"] is not None:
             ss_batch[i, :, :L, :L] = item["ss_prob"]

@@ -15,15 +15,15 @@ sys.path.insert(0, os.path.abspath('./ss_models/RNAFM'))
 try:
     from RNAformer.model.RNAformer import RiboFormer
     from RNAformer.utils.configuration import Config
+    import fm
     import loralib as lora
     from mxfold2.fold.mix import MixedFold
     import mxfold2.param_turner2004 as param_turner2004
     from mxfold2.fold.rnafold import RNAFold
     from mxfold2.fold.zuker import ZukerFold
-    import fm
 except ImportError as e:
     print(f"Error: Could not import a required submodule for SS generation. Details: {e}")
-    sys.exit(1)
+    #sys.exit(1)
 
 def insert_lora_layer(model, ft_config):
     lora_config = { "r": ft_config.r, "lora_alpha": ft_config.lora_alpha, "lora_dropout": ft_config.lora_dropout }
@@ -116,6 +116,11 @@ def _run_rnafm(seq, name_x, model, alphabet, device, save_dir):
     output_path = os.path.join(save_dir, 'rnafm', f"{name_x}.npy")
     np.save(output_path, ss_prob_map)
 
+def _run_rinalmo(seq, name_x, model, device, save_dir):
+    output_path = os.path.join(save_dir, 'rinalmo', f"{name_x}.npy")
+    if name_x in model:
+        pm = model[name_x]
+        np.save(output_path, pm)
 
 # --- NEW: 分离模型加载和推理 ---
 
@@ -153,6 +158,26 @@ def load_ss_generating_models(args, device):
     rnafm_model.to(device).eval()
     models['rnafm'] = (rnafm_model, alphabet) # RNA-FM needs alphabet too
 
+    # Load RiNALMo
+    """
+    print("Loading RiNALMo...")
+    cache_dir = "/mnt/nas/chenjiayang/Projects/RFMfold/ss_fea/bpRNA/rinalmo/prob"
+    cache_file = "/mnt/nas/chenjiayang/Projects/RFMfold/ss_fea/bpRNA/rinalmo/prob.npy"
+
+    if os.path.exists(cache_file) != True:
+        pm_dict = {}
+        for filename in os.listdir(cache_dir):
+            prename, ext = os.path.splitext(filename)
+            pm_file = os.path.join(cache_dir, filename)
+            pm = np.load(pm_file)
+            pm_dict[prename] = pm
+
+        np.save(cache_file, pm_dict)
+
+    pm_dict = np.load(cache_file, allow_pickle=True).item()
+    models["rinalmo"] = pm_dict
+    """
+
     print("All Stage 1 models loaded successfully.")
     return models
 
@@ -165,13 +190,27 @@ def generate_ss_features_for_sequence(seq, name, loaded_models, device, save_dir
     # 确保每个子目录都存在
     for model_name in loaded_models.keys():
         os.makedirs(os.path.join(save_dir, model_name), exist_ok=True)
-        
-    _run_rnaformer(seq, name, loaded_models['rnaformer'], device, save_dir)
-    print(f"RNAformer prediction saved for {name}")
 
-    _run_mxfold2(seq, name, loaded_models['mxfold2'], device, save_dir)
-    print(f"MXfold2 prediction saved for {name}")
-    
-    rnafm_model, alphabet = loaded_models['rnafm']
-    _run_rnafm(seq, name, rnafm_model, alphabet, device, save_dir)
-    print(f"RNA-FM prediction saved for {name}")
+        try:
+            if model_name == 'rnaformer':
+                _run_rnaformer(seq, name, loaded_models['rnaformer'], device, save_dir)
+                print(f"RNAformer prediction saved for {name}")
+            elif model_name == 'mxfold2':
+                _run_mxfold2(seq, name, loaded_models['mxfold2'], device, save_dir)
+                print(f"MXfold2 prediction saved for {name}")
+            elif model_name == 'rnafm':
+                rnafm_model, alphabet = loaded_models['rnafm']
+                _run_rnafm(seq, name, rnafm_model, alphabet, device, save_dir)
+                print(f"RNA-FM prediction saved for {name}")
+            """
+            elif model_name == 'rinalmo':
+                # _run_mxfold2(seq, name, loaded_models['rinalmo'], device, save_dir)
+                _run_rinalmo(seq, name, loaded_models['rinalmo'], device, save_dir)
+                print(f"RiNALMo prediction saved for {name}")
+            #"""
+        except Exception as e:
+            print(e)
+            print("skip {} for {}".format(model_name, name))
+            continue
+
+

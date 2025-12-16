@@ -35,6 +35,7 @@ def main():
                         help="Device to use ('auto', 'cpu', 'gpu').")
     parser.add_argument('--active_methods', type=str, nargs='+', default=["mxfold2", "rnafm", "rnaformer"],
                         help="List of active secondary structure prediction methods.")
+    parser.add_argument('--save_ss_dir', type=str, default="./ss_out/",)
     args = parser.parse_args()
 
     # --- 1. 检查 Checkpoint 文件是否存在 ---
@@ -48,6 +49,7 @@ def main():
         checkpoint_path=args.ckpt_path,
         map_location=torch.device('cuda' if args.device == 'gpu' else 'cpu') 
     )
+    model_module.set_save_ss_dir(args.save_ss_dir)
     print("Model loaded successfully.")
     
     # --- 3. 设置数据模块 ---
@@ -79,19 +81,9 @@ def main():
     
     # --- 5. 运行验证 ---
     print("\n Starting validation... ")
-    results = trainer.validate(model=model_module, datamodule=data_module)
-    
-    # --- 6. 打印结果 ---
-    print("\n" + "="*50)
-    print("         Validation Results")
-    print("="*50)
-    if results:
-        final_metrics = results[0]
-        for key, value in final_metrics.items():
-            print(f"{key:<20}: {value:.4f}")
-    else:
-        print("Validation did not produce any results.")
-    print("="*50)
+    results = trainer.predict(model=model_module, datamodule=data_module)
+    print("Complete Prediction")
+
 
 if __name__ == "__main__":
     main()

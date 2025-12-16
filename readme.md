@@ -68,7 +68,13 @@ The codes have been tested on a Ubuntu 24.04 system with GeForce RTX 4090 GPU.
    bash install_env.sh
    conda activate RFMfold
    ```
-   **Note**: During the installation process, you may be prompted to confirm installations.
+   
+Issue:
+fatal error: crypt.h: No such file or directory
+conda install conda-forge::libxcrypt
+
+To Do:
+1.RNA-FM download link update
 
 ### Inference
 
@@ -81,17 +87,33 @@ The `.fasta` and `.bpseq` files should be placed under two separate folders, but
 **Step 2. Generate secondary structure features**. Run the following command to generate secondary structure probability matrices from the base models.
 
 ```bash 
-python3 infer_ss_batch.py --input_dir ./data/example/fasta --ss_feature_dir ./ss_fea
+python3 infer_ss_batch.py --input_dir ./data/example/fasta --ss_feature_dir ./ss_fea/example
 ```
 
-**Step 3. Run RFMfold**. Finally, execute the RFMfold validation script to obtain secondary structure predictions and evaluate performance.
+**Step 3. Run RFMfold**. Finally, execute the RFMfold prediction script to obtain secondary structure predictions.
+```
+python3 run_pred.py --val_root ./data/example --feature_parent_dir_val ./ss_fea/example --save_ss_dir ./ss_out/example
+```
+
+**Optional Step. Validation**. If `bpseq` files are given under `val_root`, metrics can be computed.
 
 ```bash
-python3 run_val.py --val_root ./data/example
+python3 run_val.py --val_root ./data/example --feature_parent_dir_val ./ss_fea/example
 ```
 
 On completion, the script prints the **macro/micro F1-score** to the console.
 
+We also offer a instruction for prediction of CASP15 and CASP16 RNA targets.
+```bash
+   python3 infer_ss_batch.py --input_dir ./data/CASP15/fasta --ss_feature_dir ./ss_fea/CASP15/
+   python3 infer_ss_batch.py --input_dir ./data/CASP16/fasta --ss_feature_dir ./ss_fea/CASP16/  
+   
+   python3 run_val.py --val_root ./data/CASP15/ --feature_parent_dir_val ./ss_fea/CASP15/ 
+   python3 run_val.py --val_root ./data/CASP16/ --feature_parent_dir_val ./ss_fea/CASP16/
+   
+   python3 run_pred.py --val_root ./data/CASP15/ --feature_parent_dir_val ./ss_fea/CASP15/ --save_ss_dir ./ss_out/CASP15/
+   python3 run_pred.py --val_root ./data/CASP16/ --feature_parent_dir_val ./ss_fea/CASP16/ --save_ss_dir ./ss_out/CASP16/
+   ```
 
 [//]: # (---)
 
@@ -142,7 +164,10 @@ On completion, the script prints the **macro/micro F1-score** to the console.
 To train RFMfold, you need to provide it with pre-computed secondary structure predictions from your chosen base models. 
 Here is a step-by-step guide using the bpRNA dataset as an example.
 
-1. **Prepare features**
+1. **Download Data**
+
+
+2. **Prepare features**
 
    Inside the `ss_fea/` directory, create `train` and `val` subdirectories. Then, for each base prediction method you
    want to include in your ensemble, create a corresponding subdirectory within both `train` and `val`. For example, the final structure should look like:
@@ -167,7 +192,7 @@ Here is a step-by-step guide using the bpRNA dataset as an example.
        └── ...
     ```
    
-2. **Prepare labels**
+3. **Prepare labels**
 
    For the training labels (ground truth secondary structures), RFMfold by default use `.bpseq` format and fasta to train the model. The label files should be organized as follows:
 
@@ -201,28 +226,14 @@ Here is a step-by-step guide using the bpRNA dataset as an example.
    Save each output as a 2D probability matrix in `.npy` format. The filename of the `.npy` file must match the name of
    the corresponding sequence file. Run the following two commands to generate the data for the training and validation sets, respectively:
    ```bash
-   python3 infer_ss_batch.py --input_dir ./data/train/fasta --ss_feature_dir ./ss_fea/train
-   python3 infer_ss_batch.py --input_dir ./data/val/fasta --ss_feature_dir ./ss_fea/val
+   python3 infer_ss_batch.py --input_dir ./data/bpRNA/TR0/fasta --ss_feature_dir ./ss_fea/bpRNA/TR0
+   python3 infer_ss_batch.py --input_dir ./data/bpRNA/VL0/fasta --ss_feature_dir ./ss_fea/bpRNA/VL0
+   python3 infer_ss_batch.py --input_dir ./data/bpRNA/TS0/fasta --ss_feature_dir ./ss_fea/bpRNA/TS0
    ```
 
-4. **Configure the training script**
-
-   Open the `pl_train.py` script and locate the `DATA_CONFIG` dictionary. Update the directory paths to point to your
-   datasets and feature locations.
-
-   ```python
-   # Inside pl_train.py
-   DATA_CONFIG = {
-       "train_root": "/path/to/your/bprna/TR0", # Contains fasta/ and bpseq/ for training
-       "val_root": "/path/to/your/bprna/TS0",   # Contains fasta/ and bpseq/ for validation
-       "energy_dict_path": "./bp_fea/avg_energy_stacking_k2.pkl",
-       "energy_dist_dict_path": "./bp_fea/avg_energy_dist_k2.pkl",
-       "feature_parent_dir": {
-           "train": "./ss_fea/train", # Points to your generated train features
-           "val": "./ss_fea/val"      # Points to your generated validation features
-       }
-   }
-   ```
+4. **Set training configuration**
+You can customize the training parameters by modifying the configuration file.
+A example configuration file `configs/bpRNA.yml` for bpRNA training is provided. You may change the setting for your own needs.
 
 ### Start Training
 
@@ -230,7 +241,14 @@ Once your data is prepared and the configuration is set, start the training proc
 
 ```bash
 # Run the PyTorch Lightning training script
-python pl_train.py
+python pl_train.py --config_file configs/bpRNA.yml
+```
+
+Afterwards, you may evaluate the trained model on your validation set:
+
+```bash
+python3 run_val.py --ckpt_path "./checkpoints_lightning/your_model.ckpt" \
+--val_root "./data/bpRNA/TS0/" --feature_parent_dir_val "./ss_fea/bpRNA/TS0/"
 ```
 
 The script will automatically detect the feature methods from your directory structure, configure the model channels,

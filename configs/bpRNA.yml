@@ -1,0 +1,52 @@
+# initialize a configuration file based on "./config.py"
+# this file is used to set parameters for training and evaluation
+
+DATA:
+  train_root: "/mnt/nas/chenjiayang/Projects/RFMfold/data/bpRNA/TR0"
+  val_root: "/mnt/nas/chenjiayang/Projects/RFMfold/data/bpRNA/TS0"
+  energy_dict_path: "./bp_fea/avg_energy_stacking_k2.pkl"
+  energy_dist_dict_path: "./bp_fea/avg_energy_dist_k2.pkl"
+  feature_parent_dir:
+    train: "/mnt/nas/chenjiayang/Projects/RFMfold/ss_fea/bpRNA/TR0"
+    val: "/mnt/nas/chenjiayang/Projects/RFMfold/ss_fea/bpRNA/TS0"
+  active_methods: ("mxfold2", "rnafm", "rnaformer")  # None ["mxfold2", "rinalmo", "rnafm", "rnaformer"]
+
+MODEL:
+  main_ch: 16
+  energy_ch: 2
+  ss_fea_ch: -1  # ss_fea_ch is set dynamically
+  base_ch: 128
+  depth: 6
+  drop_p: 0.15
+  dilations: (1, 2, 4, 8, 16)
+
+OPTIMIZER:
+  lr: 1e-4
+
+SCHEDULER:
+  step_size: 10
+  gamma: 0.5
+
+SAMPLER:
+  start_ratio: 0.5
+  end_ratio: 0.6
+  step_factor: 0.01
+  step_every_n_epochs: 2
+
+LOADER:
+  train:
+    batch_size: 8
+    shuffle: True
+    num_workers: 4
+  val:
+    batch_size: 8
+    shuffle: False
+    num_workers: 4
+
+TRAINER:
+  max_epochs: 100
+  accelerator: "gpu"
+  devices: "auto"
+  strategy: "ddp"
+  precision: "16-mixed"
+  log_every_n_steps: 10
